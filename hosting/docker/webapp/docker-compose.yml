@@ -35,6 +35,10 @@ services:
       retries: 5
       start_period: 10s
     environment:
+      EMAIL_TRANSPORT: resend
+      FROM_EMAIL: ${FROM_EMAIL}
+      REPLY_TO_EMAIL: ${REPLY_TO_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8030}
       LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
       API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
