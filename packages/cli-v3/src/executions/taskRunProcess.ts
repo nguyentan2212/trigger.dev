@@ -233,6 +233,7 @@ export class TaskRunProcess {
     });
 
     this._child.on("exit", this.#handleExit.bind(this));
+    this._child.on("error", this.#handleError.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
 
@@ -296,6 +297,19 @@ export class TaskRunProcess {
         env: params.env,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
+    } else {
+      // Child process is dead or disconnected — the IPC send was skipped so the attempt
+      // promise would hang forever. Reject it immediately to let the caller handle it.
+      this._attemptStatuses.set(key, "REJECTED");
+
+      // @ts-expect-error - rejecter is assigned in the promise constructor above
+      rejecter(
+        new UnexpectedExitError(
+          -1,
+          null,
+          "Child process is not connected, cannot execute task run"
+        )
+      );
     }
 
     const result = await promise;
@@ -319,6 +333,10 @@ export class TaskRunProcess {
     }
 
     this._ipc?.send("RESOLVE_WAITPOINT", { waitpoint });
+  }
+
+  #handleError(error: Error) {
+    logger.debug("child process error", { error, pid: this.pid });
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {

@@ -149,6 +149,14 @@ export const RunTags = z.union([RunTag, RunTag.array()]);
 
 export type RunTags = z.infer<typeof RunTags>;
 
+/** Stores the original user-provided idempotency key and scope */
+export const IdempotencyKeyOptionsSchema = z.object({
+  key: z.string(),
+  scope: z.enum(["run", "attempt", "global"]),
+});
+
+export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSchema>;
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -191,6 +199,8 @@ export const TriggerTaskRequestBody = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The original user-provided idempotency key and scope */
+      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -203,6 +213,14 @@ export const TriggerTaskRequestBody = z.object({
       priority: z.number().optional(),
       bulkActionId: z.string().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string().max(512),
+          delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
+          maxDelay: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -233,6 +251,8 @@ export const BatchTriggerTaskItem = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The original user-provided idempotency key and scope */
+      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       lockToVersion: z.string().optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
@@ -251,6 +271,14 @@ export const BatchTriggerTaskItem = z.object({
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string().max(512),
+          delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
+          maxDelay: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -313,6 +341,85 @@ export const BatchTriggerTaskV3Response = z.object({
 });
 
 export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Response>;
+
+// ============================================================================
+// 2-Phase Batch API (v3) - Streaming NDJSON Support
+// ============================================================================
+
+/**
+ * Phase 1: Create batch request body
+ * Creates the batch record and optionally blocks parent run for batchTriggerAndWait
+ */
+export const CreateBatchRequestBody = z.object({
+  /** Expected number of items in the batch */
+  runCount: z.number().int().positive(),
+  /** Parent run ID for batchTriggerAndWait (friendly ID) */
+  parentRunId: z.string().optional(),
+  /** Whether to resume parent on completion (true for batchTriggerAndWait) */
+  resumeParentOnCompletion: z.boolean().optional(),
+  /** Idempotency key for the batch */
+  idempotencyKey: z.string().optional(),
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
+});
+
+export type CreateBatchRequestBody = z.infer<typeof CreateBatchRequestBody>;
+
+/**
+ * Phase 1: Create batch response
+ */
+export const CreateBatchResponse = z.object({
+  /** The batch ID (friendly ID) */
+  id: z.string(),
+  /** The expected run count */
+  runCount: z.number(),
+  /** Whether this response came from a cached/idempotent batch */
+  isCached: z.boolean(),
+  /** The idempotency key if provided */
+  idempotencyKey: z.string().optional(),
+});
+
+export type CreateBatchResponse = z.infer<typeof CreateBatchResponse>;
+
+/**
+ * Phase 2: Individual item in the NDJSON stream
+ * Each line in the NDJSON body should match this schema
+ */
+export const BatchItemNDJSON = z.object({
+  /** Zero-based index of this item (used for idempotency and ordering) */
+  index: z.number().int().nonnegative(),
+  /** The task identifier to trigger */
+  task: z.string(),
+  /** The payload for this task run */
+  payload: z.unknown().optional(),
+  /** Options for this specific item */
+  options: z.record(z.unknown()).optional(),
+});
+
+export type BatchItemNDJSON = z.infer<typeof BatchItemNDJSON>;
+
+/**
+ * Phase 2: Stream items response
+ * Returned after the NDJSON stream completes
+ */
+export const StreamBatchItemsResponse = z.object({
+  /** The batch ID */
+  id: z.string(),
+  /** Number of items successfully accepted */
+  itemsAccepted: z.number(),
+  /** Number of items that were deduplicated (already enqueued) */
+  itemsDeduplicated: z.number(),
+  /** Whether the batch was sealed and is ready for processing.
+   * If false, the batch needs more items before processing can start.
+   * Clients should check this field and retry with missing items if needed. */
+  sealed: z.boolean(),
+  /** Total items currently enqueued (only present when sealed=false to help with retries) */
+  enqueuedCount: z.number().optional(),
+  /** Expected total item count (only present when sealed=false to help with retries) */
+  expectedCount: z.number().optional(),
+});
+
+export type StreamBatchItemsResponse = z.infer<typeof StreamBatchItemsResponse>;
 
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
@@ -400,6 +507,37 @@ export const ExternalBuildData = z.object({
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
+const anyString = z.custom<string & {}>((v) => typeof v === "string");
+
+export const DeploymentTriggeredVia = z
+  .enum([
+    "cli:manual",
+    "cli:ci_other",
+    "cli:github_actions",
+    "cli:gitlab_ci",
+    "cli:circleci",
+    "cli:jenkins",
+    "cli:azure_pipelines",
+    "cli:bitbucket_pipelines",
+    "cli:travis_ci",
+    "cli:buildkite",
+    "git_integration:github",
+    "dashboard",
+  ])
+  .or(anyString);
+
+export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
+
+export const BuildServerMetadata = z.object({
+  buildId: z.string().optional(),
+  isNativeBuild: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  skipPromotion: z.boolean().optional(),
+  configFilePath: z.string().optional(),
+});
+
+export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
+
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
   env: z.enum(["preview"]),
@@ -414,6 +552,23 @@ export const UpsertBranchResponseBody = z.object({
 
 export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
 
+export const CreateArtifactRequestBody = z.object({
+  type: z.enum(["deployment_context"]).default("deployment_context"),
+  contentType: z.string().default("application/gzip"),
+  contentLength: z.number().optional(),
+});
+
+export type CreateArtifactRequestBody = z.infer<typeof CreateArtifactRequestBody>;
+
+export const CreateArtifactResponseBody = z.object({
+  artifactKey: z.string(),
+  uploadUrl: z.string(),
+  uploadFields: z.record(z.string()),
+  expiresAt: z.string().datetime(),
+});
+
+export type CreateArtifactResponseBody = z.infer<typeof CreateArtifactResponseBody>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -422,20 +577,54 @@ export const InitializeDeploymentResponseBody = z.object({
   imageTag: z.string(),
   imagePlatform: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  eventStream: z
+    .object({
+      s2: z.object({
+        basin: z.string(),
+        stream: z.string(),
+        accessToken: z.string(),
+      }),
+    })
+    .optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
 
-export const InitializeDeploymentRequestBody = z.object({
-  contentHash: z.string(),
-  userId: z.string().optional(),
-  /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
-  selfHosted: z.boolean().optional(),
-  gitMeta: GitMeta.optional(),
-  type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
-  runtime: z.string().optional(),
-  initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
-});
+export const InitializeDeploymentRequestBody = z
+  .object({
+    contentHash: z.string(),
+    userId: z.string().optional(),
+    /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
+    selfHosted: z.boolean().optional(),
+    gitMeta: GitMeta.optional(),
+    type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
+    runtime: z.string().optional(),
+    initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
+    triggeredVia: DeploymentTriggeredVia.optional(),
+    buildId: z.string().optional(),
+  })
+  .and(
+    z.preprocess(
+      (val) => {
+        const obj = val as any;
+        if (!obj || !obj.isNativeBuild) {
+          return { ...obj, isNativeBuild: false };
+        }
+        return obj;
+      },
+      z.discriminatedUnion("isNativeBuild", [
+        z.object({
+          isNativeBuild: z.literal(true),
+          skipPromotion: z.boolean(),
+          artifactKey: z.string(),
+          configFilePath: z.string().optional(),
+        }),
+        z.object({
+          isNativeBuild: z.literal(false),
+        }),
+      ])
+    )
+  );
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
@@ -530,6 +719,43 @@ export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
 });
 export type GetLatestDeploymentResponseBody = z.infer<typeof GetLatestDeploymentResponseBody>;
 
+export const DeploymentLogEvent = z.object({
+  type: z.literal("log"),
+  data: z.object({
+    level: z.enum(["debug", "info", "warn", "error"]).optional().default("info"),
+    message: z.string(),
+  }),
+});
+
+export const DeploymentFinalizedEvent = z.object({
+  type: z.literal("finalized"),
+  data: z.object({
+    result: z.enum(["succeeded", "failed", "timed_out", "canceled"]).or(anyString),
+    message: z.string().optional(),
+  }),
+});
+
+export const DeploymentEvent = z.discriminatedUnion("type", [
+  DeploymentLogEvent,
+  DeploymentFinalizedEvent,
+]);
+
+export type DeploymentEvent = z.infer<typeof DeploymentEvent>;
+export type DeploymentLogEvent = z.infer<typeof DeploymentLogEvent>;
+export type DeploymentFinalizedEvent = z.infer<typeof DeploymentFinalizedEvent>;
+
+export const DeploymentEventFromString = z
+  .string()
+  .transform((s, ctx) => {
+    try {
+      return JSON.parse(s);
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid JSON" });
+      return z.NEVER;
+    }
+  })
+  .pipe(DeploymentEvent);
+
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
 });
@@ -598,6 +824,12 @@ export const CanceledRunResponse = z.object({
 });
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
+
+export const ResetIdempotencyKeyResponse = z.object({
+  id: z.string(),
+});
+
+export type ResetIdempotencyKeyResponse = z.infer<typeof ResetIdempotencyKeyResponse>;
 
 export const ScheduleType = z.union([z.literal("DECLARATIVE"), z.literal("IMPERATIVE")]);
 
@@ -996,11 +1228,18 @@ export const SubscribeRunRawShape = z.object({
   outputType: z.string().nullish(),
   runTags: z.array(z.string()).nullish().default([]),
   error: TaskRunError.nullish(),
+  realtimeStreams: z.array(z.string()).nullish().default([]),
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
 
-export const BatchStatus = z.enum(["PENDING", "COMPLETED"]);
+export const BatchStatus = z.enum([
+  "PENDING",
+  "PROCESSING",
+  "COMPLETED",
+  "PARTIAL_FAILED",
+  "ABORTED",
+]);
 
 export type BatchStatus = z.infer<typeof BatchStatus>;
 
@@ -1024,6 +1263,17 @@ export const RetrieveBatchV2Response = z.object({
   updatedAt: z.coerce.date(),
   runCount: z.number(),
   runs: z.array(z.string()),
+  processing: z.object({
+    completedAt: z.coerce.date().optional(),
+    errors: z.array(
+      z.object({
+        index: z.number(),
+        taskIdentifier: z.string(),
+        error: z.string(),
+        errorCode: z.string().optional(),
+      })
+    ),
+  }),
 });
 
 export type RetrieveBatchV2Response = z.infer<typeof RetrieveBatchV2Response>;
@@ -1304,3 +1554,14 @@ export const RetrieveRunTraceResponseBody = z.object({
 });
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
+
+export const CreateStreamResponseBody = z.object({
+  version: z.string(),
+});
+export type CreateStreamResponseBody = z.infer<typeof CreateStreamResponseBody>;
+
+export const AppendToStreamResponseBody = z.object({
+  ok: z.boolean(),
+  message: z.string().optional(),
+});
+export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBody>;

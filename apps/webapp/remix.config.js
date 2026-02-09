@@ -22,6 +22,8 @@ module.exports = {
     "highlight.run",
     "random-words",
     "superjson",
+    "copy-anything",
+    "is-what",
     "prismjs/components/prism-json",
     "prismjs/components/prism-typescript",
     "redlock",
@@ -34,6 +36,8 @@ module.exports = {
       os: true,
       crypto: true,
       http2: true,
+      assert: true,
+      util: true,
     },
   },
 };

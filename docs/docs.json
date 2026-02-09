@@ -44,6 +44,18 @@
             ]
           },
           {
+            "group": "Building with AI",
+            "pages": [
+              "building-with-ai",
+              {
+                "group": "MCP Server",
+                "pages": ["mcp-introduction", "mcp-tools"]
+              },
+              "skills",
+              "mcp-agent-rules"
+            ]
+          },
+          {
             "group": "Writing tasks",
             "pages": [
               "writing-tasks-introduction",
@@ -60,6 +72,7 @@
               "runs/max-duration",
               "tags",
               "runs/metadata",
+              "tasks/streams",
               "run-usage",
               "context",
               "runs/priority",
@@ -166,10 +179,6 @@
             ]
           },
           {
-            "group": "MCP Server",
-            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
-          },
-          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -198,7 +207,6 @@
               "open-source-self-hosting"
             ]
           },
-
           {
             "group": "Open source",
             "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
@@ -227,6 +235,13 @@
           {
             "group": "Tasks API",
             "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+          },
+          {
+            "group": "Batches API",
+            "pages": [
+              "management/batches/create",
+              "management/batches/stream-items"
+            ]
           },
           {
             "group": "Runs API",
@@ -262,6 +277,14 @@
               "management/envvars/update",
               "management/envvars/delete"
             ]
+          },
+          {
+            "group": "Deployments API",
+            "pages": [
+              "management/deployments/retrieve",
+              "management/deployments/get-latest",
+              "management/deployments/promote"
+            ]
           }
         ]
       },
@@ -295,6 +318,7 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
+
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
@@ -302,6 +326,7 @@
                   "guides/ai-agents/verify-news-article"
                 ]
               },
+              "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -328,7 +353,8 @@
                   "guides/frameworks/webhooks-guides-overview",
                   "guides/frameworks/nextjs-webhooks",
                   "guides/frameworks/remix-webhooks",
-                  "guides/examples/stripe-webhook"
+                  "guides/examples/stripe-webhook",
+                  "guides/examples/hookdeck-webhook"
                 ]
               }
             ]
@@ -348,6 +374,8 @@
             "pages": [
               "guides/example-projects/anchor-browser-web-scraper",
               "guides/example-projects/batch-llm-evaluator",
+              "guides/example-projects/claude-changelog-generator",
+              "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
@@ -356,6 +384,7 @@
               "guides/example-projects/product-image-generator",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/smart-spreadsheet",
               "guides/example-projects/turborepo-monorepo-prisma",
               "guides/example-projects/vercel-ai-sdk-deep-research",
               "guides/example-projects/vercel-ai-sdk-image-generator"
@@ -425,6 +454,11 @@
     "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": "css-variables"
     }
   },
   "appearance": {

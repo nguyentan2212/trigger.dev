@@ -11,6 +11,7 @@ import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 import { type RunOptionsData } from "../testTask";
 import { replaceSuperJsonPayload } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 
 type OverrideOptions = {
   environmentId?: string;
@@ -109,6 +110,7 @@ export class ReplayTaskRunService extends BaseService {
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
             bulkActionId: overrideOptions?.bulkActionId,
             region,
+            priority: overrideOptions.prioritySeconds,
           },
         },
         {
@@ -118,6 +120,9 @@ export class ReplayTaskRunService extends BaseService {
           traceContext: {
             traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
           },
+          realtimeStreamsVersion: determineRealtimeStreamsVersion(
+            existingTaskRun.realtimeStreamsVersion
+          ),
         }
       );
 

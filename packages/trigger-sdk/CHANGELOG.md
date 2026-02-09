@@ -1,5 +1,113 @@
 # @trigger.dev/sdk
 
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- Improve batch trigger error messages, especially when rate limited ([#2837](https://github.com/triggerdotdev/trigger.dev/pull/2837))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- feat: Support for new batch trigger system ([#2779](https://github.com/triggerdotdev/trigger.dev/pull/2779))
+- feat(sdk): Support debouncing runs when triggering with new debounce options ([#2794](https://github.com/triggerdotdev/trigger.dev/pull/2794))
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+
+## 4.3.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+
+## 4.2.0
+
+### Patch Changes
+
+- fix(sdk): Re-export schemaTask types to prevent the TypeScript error TS2742: The inferred type of 'task' cannot be named without a reference to '@trigger.dev/core/v3'. This is likely not portable. ([#2735](https://github.com/triggerdotdev/trigger.dev/pull/2735))
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- Updated dependencies:
+  - `@trigger.dev/core@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.1`
+
+## 4.1.0
+
+### Minor Changes
+
+- Realtime streams v2 ([#2632](https://github.com/triggerdotdev/trigger.dev/pull/2632))
+- Prevent uncaught errors in the `onSuccess`, `onComplete`, and `onFailure` lifecycle hooks from failing attempts/runs. ([#2515](https://github.com/triggerdotdev/trigger.dev/pull/2515))
+
+  Deprecated the `onStart` lifecycle hook (which only fires before the `run` function on the first attempt). Replaced with `onStartAttempt` that fires before the run function on every attempt:
+
+  ```ts
+  export const taskWithOnStartAttempt = task({
+    id: "task-with-on-start-attempt",
+    onStartAttempt: async ({ payload, ctx }) => {
+      //...
+    },
+    run: async (payload: any, { ctx }) => {
+      //...
+    },
+  });
+
+  // Default a global lifecycle hook using tasks
+  tasks.onStartAttempt(({ ctx, payload, task }) => {
+    console.log(
+      `Run ${ctx.run.id} started on task ${task} attempt ${ctx.run.attempt.number}`,
+      ctx.run
+    );
+  });
+  ```
+
+  If you want to execute code before just the first attempt, you can use the `onStartAttempt` function and check `ctx.run.attempt.number === 1`:
+
+  ```ts /trigger/on-start-attempt.ts
+  export const taskWithOnStartAttempt = task({
+    id: "task-with-on-start-attempt",
+    onStartAttempt: async ({ payload, ctx }) => {
+      if (ctx.run.attempt.number === 1) {
+        console.log("Run started on attempt 1", ctx.run);
+      }
+    },
+  });
+  ```
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.0`
+
 ## 4.0.7
 
 ### Patch Changes

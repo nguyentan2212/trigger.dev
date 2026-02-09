@@ -94,6 +94,8 @@ const EnvironmentSchema = z
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
+    AUTH_GOOGLE_CLIENT_ID: z.string().optional(),
+    AUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
     EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
     FROM_EMAIL: z.string().optional(),
     REPLY_TO_EMAIL: z.string().optional(),
@@ -219,6 +221,7 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    REALTIME_STREAMS_INACTIVITY_TIMEOUT_MS: z.coerce.number().int().default(60000), // 1 minute
 
     REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
       .number()
@@ -344,6 +347,12 @@ const EnvironmentSchema = z
     OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     OBJECT_STORE_REGION: z.string().optional(),
     OBJECT_STORE_SERVICE: z.string().default("s3"),
+
+    ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_REGION: z.string().optional(),
     EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
     EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
     EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),
@@ -519,6 +528,7 @@ const EnvironmentSchema = z
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
     TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+    BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
@@ -527,6 +537,14 @@ const EnvironmentSchema = z
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
+
+    // 2-phase batch API settings
+    STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
+    STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728),
+    BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
+    BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
+    BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(1),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -592,6 +610,12 @@ const EnvironmentSchema = z
       .int()
       .default(60_000),
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
+
+    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour (3,600,000ms) */
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60), // 1 hour
 
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
@@ -922,6 +946,24 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     BATCH_TRIGGER_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    // BatchQueue DRR settings (Run Engine v2)
+    BATCH_QUEUE_DRR_QUANTUM: z.coerce.number().int().default(25),
+    BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
+    BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
+    BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
+    BATCH_QUEUE_WORKER_ENABLED: BoolEnv.default(true),
+    // Number of master queue shards for horizontal scaling
+    BATCH_QUEUE_SHARD_COUNT: z.coerce.number().int().default(1),
+    // Maximum queues to fetch from master queue per iteration
+    BATCH_QUEUE_MASTER_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+    // Enable worker queue for two-stage processing (claim messages, push to worker queue, process from worker queue)
+    BATCH_QUEUE_WORKER_QUEUE_ENABLED: BoolEnv.default(true),
+    // Worker queue blocking timeout in seconds (for two-stage processing, only used when BATCH_QUEUE_WORKER_QUEUE_ENABLED is true)
+    BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
+    // Global rate limit: max items processed per second across all consumers
+    // If not set, no global rate limiting is applied
+    BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
     ADMIN_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
@@ -1133,6 +1175,36 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
+    // Logs List Query Settings (for paginated log views)
+    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(256_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce
+      .number()
+      .int()
+      .default(256_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
+    CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
+
+    // Logs Detail Query Settings (for single log views)
+    CLICKHOUSE_LOGS_DETAIL_MAX_MEMORY_USAGE: z.coerce.number().int().default(64_000_000),
+    CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
+    CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
+
+    // Query feature flag
+    QUERY_FEATURE_ENABLED: z.string().default("1"),
+
+    // Query page ClickHouse limits (for TSQL queries)
+    QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
+    QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
+    QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
+    QUERY_CLICKHOUSE_MAX_EXPANDED_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
+    QUERY_CLICKHOUSE_MAX_BYTES_BEFORE_EXTERNAL_GROUP_BY: z.coerce.number().int().default(0),
+    QUERY_CLICKHOUSE_MAX_RETURNED_ROWS: z.coerce.number().int().default(10_000),
+
+    // Query page concurrency limits
+    QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),
+    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+
     EVENTS_CLICKHOUSE_URL: z
       .string()
       .optional()
@@ -1148,8 +1220,14 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT: z.string().default("1"),
     EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE: z.coerce.number().int().default(10485760),
     EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS: z.coerce.number().int().default(5000),
-    EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
-    EVENT_REPOSITORY_DEFAULT_STORE: z.enum(["postgres", "clickhouse"]).default("postgres"),
+    EVENTS_CLICKHOUSE_START_TIME_MAX_AGE_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 5), // 5 minutes
+    EVENT_REPOSITORY_DEFAULT_STORE: z
+      .enum(["postgres", "clickhouse", "clickhouse_v2"])
+      .default("postgres"),
+    EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
@@ -1220,8 +1298,24 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
     EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS: z.coerce.number().int().default(1000),
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
+    EVENT_LOOP_MONITOR_NOTIFY_ENABLED: z.string().default("0"),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
+
+    REALTIME_STREAMS_S2_BASIN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60 * 24), // 1 day
+    REALTIME_STREAMS_S2_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
+    REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
+    REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
+    WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

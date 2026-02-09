@@ -53,6 +53,7 @@ export type CreateEventInput = Omit<
   | "links"
 > & {
   properties: Attributes;
+  resourceProperties?: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
 };
@@ -209,6 +210,7 @@ export type SpanDetail = {
   events: SpanEvents; // Timeline events, SpanEvents component
   style: TaskEventStyle; // Icons, variants, accessories (RunIcon, SpanTitle)
   properties: Record<string, unknown> | string | number | boolean | null | undefined; // Displayed as JSON in span properties (CodeBlock)
+  resourceProperties?: Record<string, unknown> | string | number | boolean | null | undefined; // Displayed as JSON in span resource properties (CodeBlock)
 
   // ============================================================================
   // Entity & Relationships
@@ -217,6 +219,7 @@ export type SpanDetail = {
     // Used for entity type switching in SpanEntity
     type: string | undefined;
     id: string | undefined;
+    metadata: string | undefined;
   };
 
   metadata: any; // Used by SpanPresenter for entity processing
@@ -389,15 +392,6 @@ export interface IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined>;
-
-  getSpanOriginalRunId(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<string | undefined>;
 
   // Event recording methods
   recordEvent(

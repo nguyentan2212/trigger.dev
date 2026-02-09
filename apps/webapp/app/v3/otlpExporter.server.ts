@@ -17,7 +17,10 @@ import {
 } from "@trigger.dev/otlp-importer";
 import { logger } from "~/services/logger.server";
 import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
-import { clickhouseEventRepository } from "./eventRepository/clickhouseEventRepositoryInstance.server";
+import {
+  clickhouseEventRepository,
+  clickhouseEventRepositoryV2,
+} from "./eventRepository/clickhouseEventRepositoryInstance.server";
 import { generateSpanId } from "./eventRepository/common.server";
 import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
@@ -38,6 +41,7 @@ class OTLPExporter {
   constructor(
     private readonly _eventRepository: EventRepository,
     private readonly _clickhouseEventRepository: ClickhouseEventRepository,
+    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
   ) {
@@ -109,6 +113,10 @@ class OTLPExporter {
   #getEventRepositoryForStore(store: string): IEventRepository {
     if (store === "clickhouse") {
       return this._clickhouseEventRepository;
+    }
+
+    if (store === "clickhouse_v2") {
+      return this._clickhouseEventRepositoryV2;
     }
 
     return this._eventRepository;
@@ -204,6 +212,24 @@ function convertLogsToCreateableEvents(
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
+
   const taskEventStore =
     extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
     env.EVENT_REPOSITORY_DEFAULT_STORE;
@@ -249,6 +275,7 @@ function convertLogsToCreateableEvents(
           status: logLevelToEventStatus(log.severityNumber),
           startTime: log.timeUnixNano,
           properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
@@ -284,6 +311,24 @@ function convertSpansToCreateableEvents(
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
+
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
 
   const taskEventStore =
     extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
@@ -336,6 +381,7 @@ function convertSpansToCreateableEvents(
           events: spanEventsToEventEvents(span.events ?? []),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
           properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
@@ -848,6 +894,7 @@ function initializeOTLPExporter() {
   return new OTLPExporter(
     eventRepository,
     clickhouseEventRepository,
+    clickhouseEventRepositoryV2,
     process.env.OTLP_EXPORTER_VERBOSE === "1",
     process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
       ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)

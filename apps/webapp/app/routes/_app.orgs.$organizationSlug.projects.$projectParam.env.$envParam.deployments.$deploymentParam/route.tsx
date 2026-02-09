@@ -3,7 +3,16 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { S2, S2Error } from "@s2-dev/streamstore";
-import { Clipboard, ClipboardCheck, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Clipboard,
+  ClipboardCheck,
+  ChevronDown,
+  ChevronUp,
+  TerminalSquareIcon,
+  LayoutDashboardIcon,
+  GitBranchIcon,
+  ServerIcon,
+} from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
@@ -40,6 +49,7 @@ import { cn } from "~/utils/cn";
 import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
+import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -48,7 +58,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new DeploymentPresenter();
-    const { deployment, s2Logs } = await presenter.call({
+    const { deployment, eventStream } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -56,7 +66,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       deploymentShortCode: deploymentParam,
     });
 
-    return typedjson({ deployment, s2Logs });
+    return typedjson({ deployment, eventStream });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -69,21 +79,106 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type LogEntry = {
   message: string;
   timestamp: Date;
-  level: "info" | "error" | "warn";
+  level: "info" | "error" | "warn" | "debug";
 };
 
+function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
+  icon: React.ReactNode;
+  label: string;
+} | null {
+  if (!triggeredVia) return null;
+
+  const iconClass = "size-4 text-text-dimmed";
+
+  switch (triggeredVia) {
+    case "cli:manual":
+      return {
+        icon: <TerminalSquareIcon className={iconClass} />,
+        label: "CLI (Manual)",
+      };
+    case "cli:github_actions":
+      return {
+        icon: <GitBranchIcon className={iconClass} />,
+        label: "CLI (GitHub Actions)",
+      };
+    case "cli:gitlab_ci":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (GitLab CI)",
+      };
+    case "cli:circleci":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (CircleCI)",
+      };
+    case "cli:jenkins":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Jenkins)",
+      };
+    case "cli:azure_pipelines":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Azure Pipelines)",
+      };
+    case "cli:bitbucket_pipelines":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Bitbucket Pipelines)",
+      };
+    case "cli:travis_ci":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Travis CI)",
+      };
+    case "cli:buildkite":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Buildkite)",
+      };
+    case "cli:ci_other":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (CI)",
+      };
+    case "git_integration:github":
+      return {
+        icon: <GitBranchIcon className={iconClass} />,
+        label: "GitHub Integration",
+      };
+    case "dashboard":
+      return {
+        icon: <LayoutDashboardIcon className={iconClass} />,
+        label: "Dashboard",
+      };
+    default:
+      // Handle any unknown values gracefully
+      if (triggeredVia.startsWith("cli:")) {
+        return {
+          icon: <TerminalSquareIcon className={iconClass} />,
+          label: `CLI (${triggeredVia.replace("cli:", "")})`,
+        };
+      }
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: triggeredVia,
+      };
+  }
+}
+
 export default function Page() {
-  const { deployment, s2Logs } = useTypedLoaderData<typeof loader>();
+  const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const location = useLocation();
   const page = new URLSearchParams(location.search).get("page");
 
-  const logsDisabled = s2Logs === undefined;
+  const logsDisabled = eventStream === undefined;
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const isPending = deployment.status === "PENDING";
 
   useEffect(() => {
     if (logsDisabled) return;
@@ -96,9 +191,9 @@ export default function Page() {
 
     const streamLogs = async () => {
       try {
-        const s2 = new S2({ accessToken: s2Logs.accessToken });
-        const basin = s2.basin(s2Logs.basin);
-        const stream = basin.stream(s2Logs.stream);
+        const s2 = new S2({ accessToken: eventStream.s2.accessToken });
+        const basin = s2.basin(eventStream.s2.basin);
+        const stream = basin.stream(eventStream.s2.stream);
 
         const readSession = await stream.readSession(
           {
@@ -112,27 +207,49 @@ export default function Page() {
         const decoder = new TextDecoder();
 
         for await (const record of readSession) {
-          try {
-            const headers: Record<string, string> = {};
+          const decoded = decoder.decode(record.body);
+          const result = DeploymentEventFromString.safeParse(decoded);
 
-            if (record.headers) {
-              for (const [nameBytes, valueBytes] of record.headers) {
-                headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+          if (!result.success) {
+            // fallback to the previous format in s2 logs for compatibility
+            try {
+              const headers: Record<string, string> = {};
+
+              if (record.headers) {
+                for (const [nameBytes, valueBytes] of record.headers) {
+                  headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+                }
               }
-            }
-            const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
+              const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
 
-            setLogs((prevLogs) => [
-              ...prevLogs,
-              {
-                timestamp: new Date(record.timestamp),
-                message: decoder.decode(record.body),
-                level,
-              },
-            ]);
-          } catch (err) {
-            console.error("Failed to parse log record:", err);
+              setLogs((prevLogs) => [
+                ...prevLogs,
+                {
+                  timestamp: new Date(record.timestamp),
+                  message: decoded,
+                  level,
+                },
+              ]);
+            } catch (err) {
+              console.error("Failed to parse log record:", err);
+            }
+
+            continue;
           }
+
+          const event = result.data;
+          if (event.type !== "log") {
+            continue;
+          }
+
+          setLogs((prevLogs) => [
+            ...prevLogs,
+            {
+              timestamp: new Date(record.timestamp),
+              message: event.data.message,
+              level: event.data.level,
+            },
+          ]);
         }
       } catch (error) {
         if (abortController.signal.aborted) return;
@@ -157,7 +274,7 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [s2Logs?.basin, s2Logs?.stream, s2Logs?.accessToken]);
+  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -382,6 +499,21 @@ export default function Page() {
                   ) : (
                     "–"
                   )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Triggered via</Property.Label>
+                <Property.Value>
+                  {(() => {
+                    const display = getTriggeredViaDisplay(deployment.triggeredVia);
+                    if (!display) return "–";
+                    return (
+                      <span className="flex items-center gap-1.5">
+                        {display.icon}
+                        {display.label}
+                      </span>
+                    );
+                  })()}
                 </Property.Value>
               </Property.Item>
             </Property.Table>

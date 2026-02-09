@@ -1,5 +1,99 @@
 # trigger.dev
 
+## 4.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+  - `@trigger.dev/build@4.3.3`
+  - `@trigger.dev/schema-to-json@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- fix(cli): update command should preserve existing package.json order ([#2810](https://github.com/triggerdotdev/trigger.dev/pull/2810))
+- Updated dependencies:
+  - `@trigger.dev/build@4.3.2`
+  - `@trigger.dev/core@4.3.2`
+  - `@trigger.dev/schema-to-json@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+  - `@trigger.dev/build@4.3.1`
+  - `@trigger.dev/schema-to-json@4.3.1`
+
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+- feat(cli): enable zstd compression for deployment images ([#2773](https://github.com/triggerdotdev/trigger.dev/pull/2773))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+- fix(dev): stop max listeners exceeded warning messages when running more than 10 runs concurrently ([#2771](https://github.com/triggerdotdev/trigger.dev/pull/2771))
+- Upgrade @modelcontextprotocol/sdk to 1.24.3 ([#2768](https://github.com/triggerdotdev/trigger.dev/pull/2768))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+  - `@trigger.dev/build@4.3.0`
+  - `@trigger.dev/schema-to-json@4.3.0`
+
+## 4.2.0
+
+### Minor Changes
+
+- feat(cli): upgrade bun deployments to v1.3.3 ([#2756](https://github.com/triggerdotdev/trigger.dev/pull/2756))
+
+### Patch Changes
+
+- fix(otel): exported logs and spans will now have matching trace IDs ([#2724](https://github.com/triggerdotdev/trigger.dev/pull/2724))
+- The `--force-local-build` flag is now renamed to just `--local-build` ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- fix(cli): header will always print the correct profile ([#2728](https://github.com/triggerdotdev/trigger.dev/pull/2728))
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- feat(cli): implements content-addressable store for the dev CLI build outputs, reducing disk usage ([#2725](https://github.com/triggerdotdev/trigger.dev/pull/2725))
+- Added support for native build server builds in the deploy command (`--native-build-server`) ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- Updated dependencies:
+  - `@trigger.dev/build@4.2.0`
+  - `@trigger.dev/core@4.2.0`
+  - `@trigger.dev/schema-to-json@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- - dev runs will no longer get stuck in DEQUEUED status ([#2699](https://github.com/triggerdotdev/trigger.dev/pull/2699))
+  - prevent an ENOENT "System failure" in some dev runs when making the first change after running the dev CLI.
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.2`
+  - `@trigger.dev/core@4.1.2`
+  - `@trigger.dev/schema-to-json@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.1`
+  - `@trigger.dev/core@4.1.1`
+  - `@trigger.dev/schema-to-json@4.1.1`
+
+## 4.1.0
+
+### Patch Changes
+
+- Added external cache support for local image builds ([#2682](https://github.com/triggerdotdev/trigger.dev/pull/2682))
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.0`
+  - `@trigger.dev/core@4.1.0`
+  - `@trigger.dev/schema-to-json@4.1.0`
+
 ## 4.0.7
 
 ### Patch Changes
