@@ -190,7 +190,7 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
-      - 5000
+      - "127.0.0.1:5000:5000"
     networks:
       - webapp
     volumes:
